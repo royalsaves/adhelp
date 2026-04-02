@@ -1,73 +1,51 @@
 # Identity Management Portal (Refactoring Record)
 
-해당 콘솔은 재직 중 임직원들의 빈번한 패스워드 변경 요청, 계정 초기화 요청, VPN QR 재생성 요청을 줄이기 위해 만들었던 사내 계정 지원 도구다.  
-자주 들어오는 문의는 셀프서비스 형태로 처리하고, 예외적인 요청이나 추가 확인이 필요한 건은 Slack으로 기록을 남기도록 해서 SRE/DevOps 쪽 반복 작업 부담을 줄이는 데 목적이 있었다.
+해당 콘솔은 재직 중 임직원들의 빈번한 패스워드 변경 요청, 계정 초기화 요청, VPN QR 재생성 요청을 줄이기 위해 만들었던 사내 계정 지원 도구입니다. 자주 들어오는 문의는 셀프서비스 형태로 처리하고, 추가 확인이 필요한 요청은 Slack으로 기록을 남기도록 하여 SRE/DevOps의 반복 작업을 줄이는 데 목적이 있었습니다.
 
-## 1. Problem Statement
+## 1. 문제 배경
 
-### High Coupling
-
-기존 Flask 엔드포인트 내부에 아래 요소가 한 파일에 섞여 있었다.
+기존 코드는 Flask 엔드포인트 내부에 아래 요소가 함께 들어가 있었습니다.
 
 - HTTP 요청 처리
 - AWS SDK 호출
 - LDAP 비밀번호 검증
 - 이메일 발송
 - 알림 전송
-- 보조 업무 자동화
+- 보조 자동화 호출
 
-이 구조에서는 단위 테스트가 어렵고, 특정 인프라를 교체할 때 영향 범위를 예측하기 어려웠다.
+이 구조에서는 다음 문제가 발생합니다.
 
-### Security Exposure
+- 단위 테스트가 어렵습니다.
+- 외부 연동을 교체할 때 영향 범위가 큽니다.
+- 공개 저장소로 전환할 때 내부 도메인과 운영 맥락을 분리하기 어렵습니다.
 
-업무 도메인과 내부 운영 흐름이 코드 전반에 드러나 있었다.  
-공개 저장소로 옮기려면 회사명, 내부 URL, 인증 흐름을 분리할 필요가 있었다.
+## 2. 변경 목적
 
-### Environment Dependency
+이번 정리는 기능 추가보다 아래 항목에 목적이 있었습니다.
 
-원래 구조는 실제 인프라 연결 없이는 로컬 실행 자체가 어려웠다.  
-이 상태로는 포트폴리오 용도나 독립적인 검증 환경을 만들기 힘들었다.
+- 결합도 분리
+- 실행 환경 단순화
+- 공개 저장소 전환 대응
+- 실제 인프라 없이도 동작 가능한 데모 환경 구성
 
-## 2. Engineering Decisions
+## 3. 구조 변경
 
-### Architecture: Hexagonal
-
-핵심 로직과 인프라 코드를 분리하기 위해 Ports-and-Adapters 패턴을 적용했다.
-
-- `domain/`: 모델과 포트 정의
-- `application/`: 유스케이스 조합
-- `adapters/`: AWS, LDAP, 메일, 알림, AI, 저장소 구현
-- `api.py`: HTTP 엔트리포인트
-
-의존 방향은 아래처럼 정리했다.
+백엔드는 헥사고날 구조로 다시 나눴습니다.
 
 ```text
 frontend -> flask api -> application service -> domain port -> adapter
 ```
 
-서비스 레이어는 외부 SDK를 직접 알지 않고 포트만 참조한다.  
-실제 구현 교체는 adapter 레이어에서 처리한다.
+각 레이어의 역할은 아래와 같습니다.
 
-### Runtime Separation
+- `domain`: 모델과 포트 정의
+- `application`: 유스케이스 조합
+- `adapters`: 외부 연동 구현
+- `api.py`: HTTP 엔트리포인트
 
-`APP_MODE` 기준으로 demo / live 모드를 분리했다.
+이 구조에서는 서비스 레이어가 외부 SDK를 직접 참조하지 않고, 포트 인터페이스를 통해 adapter를 사용합니다.
 
-- `demo`: 메모리 저장소, 콘솔 기반 side effect, 고정 AI 응답
-- `live`: 실제 외부 연동 adapter 사용
-
-같은 유스케이스를 유지하면서 실행 환경만 바꾸는 구조를 목표로 했다.
-
-### Container-first Workflow
-
-로컬 환경을 지저분하게 만들지 않도록 컨테이너 우선 실행 방식으로 정리했다.
-
-- frontend는 Node stage에서 빌드
-- runtime 이미지는 Python만 포함
-- Flask가 빌드된 정적 파일을 함께 서빙
-
-## 3. Implementation
-
-### Directory Structure
+## 4. 디렉토리 구성
 
 ```text
 .
@@ -86,60 +64,69 @@ frontend -> flask api -> application service -> domain port -> adapter
 └── docker-compose.yml
 ```
 
-### Backend Notes
+## 5. 실행 방식
 
-- 계정 신청, 비밀번호 변경/초기화, 잠금 해제 요청 흐름은 `application/services.py`에 위치
-- Flask 라우팅과 응답 형식은 `api.py`에서 처리
-- 디렉터리, 메일, 알림, 자동화, AI 응답은 adapter로 분리
-
-### Frontend Notes
-
-프런트는 흐름 검증용으로 유지했다.  
-과한 기능 추가 대신 주요 API를 직접 눌러볼 수 있는 최소 UI만 남겼다.
-
-## 4. Local Run
-
-컨테이너 실행 기준:
+컨테이너 실행 기준으로 정리했습니다.
 
 ```bash
 docker compose up --build
 ```
 
-접속 주소:
+접속 주소는 아래와 같습니다.
 
 ```text
 http://127.0.0.1:5001
 ```
 
-로컬 Python 실행도 가능하지만 기본 전제는 컨테이너 실행이다.
+frontend는 Node stage에서 빌드하고, 최종 Python 컨테이너에서 Flask가 정적 파일을 함께 서빙합니다.
 
-## 5. Operational Considerations
+## 6. demo / live 모드
 
-### Secrets
+실행 모드는 `APP_MODE` 기준으로 분리했습니다.
 
-- `.env`는 커밋하지 않음
-- 공개 저장소에는 `.env.example`만 유지
+### demo
 
-### Public Repository Sanitization
+- 메모리 저장소 사용
+- 외부 연동 대신 로그 출력
+- 고정 AI 응답 사용
 
-- 내부 도메인 제거
-- 회사 식별자 일반화
-- 운영 절차 문구 축소
-- 실제 자격 증명 없이도 동작 가능한 demo 모드 유지
+공개 저장소와 로컬 검증을 위한 모드입니다.
 
-### Extensibility
+### live
 
-아래 변경은 서비스 레이어 수정 없이 adapter 교체 수준에서 대응 가능하도록 정리했다.
+- 실제 외부 연동 adapter 사용
+- 같은 서비스 레이어 유지
 
-- 다른 알림 채널 추가
+실제 환경 연동을 위한 모드입니다.
+
+## 7. 운영 고려사항
+
+### 민감정보 처리
+
+- `.env`는 커밋하지 않습니다.
+- 공개 저장소에는 `.env.example`만 유지합니다.
+
+### 공개 저장소 전환
+
+아래 항목은 일반화했습니다.
+
+- 회사 식별자
+- 내부 도메인
+- 내부 운영 절차 문구
+
+### 확장성
+
+다음 변경은 서비스 레이어 수정 없이 adapter 교체 수준에서 대응할 수 있도록 정리했습니다.
+
+- 알림 채널 추가
 - 다른 인증/디렉터리 연동 추가
 - 저장소를 RDB로 교체
 - 관리자 인증 계층 추가
 
-## 6. Remaining Work
+## 8. 남은 작업
 
 - 메모리 저장소를 영속 저장소로 교체
 - 서비스 레이어 테스트 추가
 - 관리자 승인 UI 보강
 - 운영 로그 / 감사 이력 정리
-- 개발 서버 대신 운영용 실행 구성을 별도 분리
+- 운영용 실행 구성을 별도 분리

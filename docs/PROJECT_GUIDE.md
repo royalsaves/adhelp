@@ -1,32 +1,43 @@
-# Reading Order
+# Project Guide
 
-이 저장소는 아래 순서로 보는 편이 빠르다.
+## 1. 읽는 순서
 
-## 1. README
+이 저장소는 아래 순서로 보는 편이 빠릅니다.
 
-- 프로젝트를 왜 정리했는지
-- 어떤 문제를 해결했는지
-- 실행 방식이 무엇인지
+1. `README.md`
+2. `docs/ARCHITECTURE.md`
+3. `backend/ad_console/application/services.py`
+4. `backend/ad_console/adapters/`
 
-## 2. ARCHITECTURE
+## 2. 먼저 볼 내용
+
+### README
+
+- 프로젝트 배경
+- 구조 변경 목적
+- 실행 방식
+
+### ARCHITECTURE
 
 - 레이어 분리 이유
 - 포트와 adapter 책임
 - demo / live 분리 기준
 
-## 3. application/services.py
+## 3. 코드 기준으로 볼 파일
+
+### `application/services.py`
 
 - 실제 유스케이스 중심 파일
 - 계정/비밀번호/잠금 해제 흐름 확인 가능
 
-## 4. adapters/
+### `adapters/`
 
 - 외부 의존성 구현 위치
 - runtime별 교체 지점 확인 가능
 
-## 참고 포인트
+## 4. 확인 포인트
 
-이 프로젝트는 기능 시연보다 아래 항목을 보여주는 쪽에 가깝다.
+이 저장소에서는 아래 항목을 중심으로 보면 됩니다.
 
 - 운영성 강한 Flask 코드 정리
 - 인프라 의존성 분리
