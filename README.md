@@ -1,32 +1,28 @@
-# Identity Access Support Console
+# 사내 계정 지원 콘솔을 포트폴리오용으로 다시 만든 기록
 
-Portfolio-friendly demo of an internal operations console for account onboarding, password lifecycle workflows, access recovery, and support triage.
+이 저장소는 원래 사내에서 쓰던 계정 지원 도구를 공개 가능한 형태로 다시 정리한 결과물입니다.  
+기능 자체는 단순합니다. 계정 신청을 받고, 비밀번호를 바꾸거나 초기화하고, 잠긴 계정을 풀어주고, 자주 들어오는 문의를 간단한 챗봇으로 받아내는 흐름입니다.
 
-## What It Shows
+처음 손댔을 때 가장 먼저 보인 문제는 구조였습니다. HTTP 라우트, AWS 호출, LDAP 검증, 이메일 발송, 알림 전송이 한 파일 안에 다 들어가 있었고, 그 상태로는 공개용으로 다듬기도 어렵고 설명하기도 애매했습니다. 그래서 이번 정리에서는 기능을 더 붙이기보다, "운영 도구를 어떻게 밖으로 꺼내도 설명 가능한 구조로 바꾸느냐"에 집중했습니다.
 
-- Hexagonal backend structure with `domain`, `application`, and `adapters`
-- Stable HTTP API while infrastructure dependencies stay behind ports
-- Demo mode for local execution without AWS, LDAP, Slack, or SMTP credentials
-- Small React frontend that exercises the main workflows end to end
+## 무엇을 바꿨나
 
-## Architecture
+이번 작업의 핵심은 백엔드를 헥사고날 아키텍처로 다시 나눈 것입니다.
 
 ```text
-frontend -> flask api -> application services -> ports -> adapters
+frontend -> flask api -> application service -> domain port -> adapter
 ```
 
-Adapter examples:
+이 구조로 바꾸면서 얻은 장점은 분명했습니다.
 
-- Directory adapter: demo or AWS Directory Service
-- Identity verifier: demo or LDAP bind
-- Notification adapter: console or Slack webhook
-- Email adapter: console or SES
-- AI adapter: canned demo responder or Bedrock
-- Automation adapter: console or external job runner
+- 유스케이스 코드가 외부 서비스 SDK에 직접 묶이지 않습니다.
+- 데모 모드와 실제 연동 모드가 같은 인터페이스를 공유합니다.
+- 공개 저장소에 올릴 때 민감한 인프라 정보와 업무 맥락을 걷어내기 쉬워집니다.
+- "왜 이렇게 나눴는지"를 면접이나 기술 소개 자리에서 설명하기 편해집니다.
 
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+예를 들어 계정 생성이나 비밀번호 초기화 같은 흐름은 `application/services.py`에 두고, 실제 Directory Service 호출은 adapter 쪽으로 밀어냈습니다. 이메일, 알림, 자동화 실행, AI 응답도 같은 방식으로 분리했습니다.
 
-## Project Layout
+## 디렉토리 구조
 
 ```text
 backend/
@@ -43,9 +39,31 @@ frontend/
 docs/
 ```
 
-## Local Run
+각 폴더의 역할은 아래처럼 보면 됩니다.
 
-### 1. Backend
+- `domain`: 시스템이 다루는 데이터와 포트 인터페이스
+- `application`: 실제 업무 흐름을 조합하는 유스케이스
+- `adapters`: AWS, LDAP, 이메일, 알림 같은 외부 연동 구현
+- `api`: Flask 엔드포인트와 요청/응답 처리
+- `frontend`: 이 흐름을 직접 눌러보는 데모 UI
+
+## 실행 방식
+
+지금은 컨테이너 기준으로 보는 편이 가장 깔끔합니다. 로컬에 `npm install`을 하지 않아도 되도록 멀티스테이지 빌드로 묶어뒀습니다.
+
+```bash
+docker compose up --build
+```
+
+실행 후 접속 주소:
+
+```text
+http://127.0.0.1:5001
+```
+
+이미지 안에서는 먼저 Node 단계에서 프런트를 빌드하고, 최종 Python 컨테이너에서 Flask가 그 정적 파일을 함께 서빙합니다. 그래서 실행 관점에서는 "한 컨테이너만 띄우면 된다"는 쪽에 가깝습니다.
+
+로컬에서 백엔드만 따로 보고 싶다면 아래 방식도 가능합니다.
 
 ```bash
 cd backend
@@ -56,60 +74,52 @@ cp .env.example .env
 python app.py
 ```
 
-Default mode is `demo`, so cloud credentials are not required.
+다만 이 저장소는 컨테이너 기준으로 보는 쪽이 의도에 더 맞습니다.
 
-### 2. Frontend
+## 데모 모드와 실제 연동 모드
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+공개 저장소에서 제일 중요한 건 "실행은 되는데, 실제 회사 시스템은 건드리지 않는 상태"였습니다. 그래서 `APP_MODE=demo`를 기본값으로 두었습니다.
 
-Vite proxies `/api` to `http://127.0.0.1:5001`.
+데모 모드에서는:
 
-### 3. Production-style local build
+- 메모리 저장소를 사용합니다.
+- 이메일 발송 대신 콘솔 로그를 남깁니다.
+- Slack 같은 외부 알림도 실제 전송 대신 로그로 대체합니다.
+- AI 응답도 실제 모델 호출 대신 데모 응답으로 동작합니다.
 
-```bash
-cd frontend
-npm run build
-cd ../backend
-python app.py
-```
+반대로 실제 연동이 필요한 환경에서는 adapter만 바꿔 끼우면 됩니다.  
+유스케이스 코드는 그대로 두고, 외부 의존성만 live adapter로 교체하는 방식입니다.
 
-The Flask server will serve `frontend/dist`.
+## 공개 저장소로 옮기면서 신경 쓴 것
 
-## Container Run
+원본 맥락에는 내부 도메인, 위키 주소, 업무 절차, 인증 흐름 같은 정보가 꽤 많이 들어 있었습니다. 포트폴리오로 올리려면 그걸 그대로 두면 안 됩니다. 그래서 이번 정리에서는 아래 기준을 적용했습니다.
 
-No local `npm install` is required for containerized use.
+- 회사명과 내부 URL은 전부 일반화
+- `.env`는 커밋하지 않고 `.env.example`만 유지
+- 데모 UI 문구도 특정 조직 맥락이 드러나지 않게 수정
+- 컨테이너만으로 실행되도록 정리
 
-```bash
-docker compose up --build
-```
+즉, "내부 도구를 만들 줄 안다"는 점은 보여주되, 실제 내부 자산은 남기지 않는 쪽으로 정리했습니다.
 
-Then open `http://127.0.0.1:5001`.
+## 이 프로젝트를 보여줄 때 포인트
 
-The image builds the React frontend in a Node stage and serves the built assets from the Flask container.
+이 저장소를 설명할 때는 기능 자체보다 구조 변화에 초점을 맞추는 편이 낫습니다.
 
-## Demo Workflows
+1. 운영성 강한 Flask 앱을 헥사고날 구조로 분리했다는 점
+2. 데모 모드와 라이브 모드를 같은 서비스 레이어 위에 올렸다는 점
+3. 공개 저장소용으로 민감정보와 회사 의존성을 걷어냈다는 점
+4. 로컬 환경을 더럽히지 않도록 컨테이너 우선 실행 흐름을 만들었다는 점
 
-- Request a new account
-- Change a password
-- Send a reset code and complete a reset
-- Request an account unlock
-- Ask the support assistant a question
+개인적으로는 네 번째가 꽤 중요했습니다. 실제로 이런 류의 프로젝트는 "실행은 되는데 환경이 지저분해지는" 경우가 많아서, 실행 경험 자체를 정리하는 것도 완성도에 포함된다고 생각합니다.
 
-In demo mode, the app logs simulated side effects to stdout instead of calling live services.
+## 다음에 더 손볼 부분
 
-## Notes For Public GitHub Use
+아직 남은 일도 있습니다.
 
-- No real company names, domains, tokens, or internal URLs are included
-- `.env` is ignored and only `.env.example` is committed
-- The public frontend uses generic support content rather than internal wiki references
+- 메모리 저장소를 PostgreSQL로 교체
+- 서비스 레이어 테스트 추가
+- 관리자 승인 화면 분리
+- 운영 로그와 감사 이력 저장
+- 개발 서버 대신 WSGI 기준 실행 구성 정리
 
-## Next Improvements
-
-- Replace in-memory repositories with PostgreSQL
-- Add automated tests around application services
-- Add Docker Compose for one-command local startup
-- Add role-based auth for admin approval screens
+지금 상태는 "공개 가능한 포트폴리오 버전 1" 정도로 보는 게 맞습니다. 기능을 무리하게 늘리기보다, 설명 가능하고 실행 가능한 상태로 잘 잘라낸 버전입니다.

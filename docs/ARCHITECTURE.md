@@ -1,72 +1,181 @@
-# Architecture
+# 왜 이 프로젝트를 헥사고날 구조로 바꿨는가
 
-## Overview
+처음 상태의 백엔드는 전형적인 운영 도구 스타일이었습니다.  
+빠르게 기능을 붙이기엔 좋지만, 시간이 지나면 라우트 함수 하나가 점점 많은 일을 떠안게 됩니다.
 
-This project uses a pragmatic hexagonal architecture.
+이 프로젝트도 비슷했습니다.
+
+- HTTP 요청을 받고
+- 입력값을 검사하고
+- 외부 디렉터리 서비스에 붙고
+- 이메일을 보내고
+- 알림을 날리고
+- 어떤 경우엔 AI 응답까지 만들고
+
+이 흐름이 한 군데에 몰려 있으면 처음에는 편해도 나중엔 세 가지가 바로 문제로 드러납니다.
+
+1. 테스트가 어렵습니다.
+2. 외부 연동을 바꾸기가 어렵습니다.
+3. 공개 저장소용으로 다듬을 때 민감한 맥락을 떼어내기 어렵습니다.
+
+이번 리팩터링은 그래서 "예쁘게 나누기"가 목적이 아니라, 운영용 코드가 설명 가능한 구조를 갖게 만드는 데 목적이 있었습니다.
+
+## 현재 구조
 
 ```text
 HTTP / UI
   -> API layer
-  -> Application services
-  -> Domain models + ports
-  -> Infrastructure adapters
+  -> Application service
+  -> Domain model + Port
+  -> Adapter
 ```
 
-The goal is to keep business workflows independent from transport and vendor choices.
+익숙한 계층형 구조와 비슷해 보이지만, 의존 방향이 다릅니다.  
+핵심 로직은 외부 서비스 구현을 모르고, 대신 포트 인터페이스만 압니다.
 
-## Layers
+## 각 레이어의 역할
 
-### API layer
+### 1. API 레이어
 
-- Flask routes live in `backend/ad_console/api.py`
-- Responsible for request validation, HTTP status codes, and JSON serialization
+위치:
 
-### Application layer
+- `backend/ad_console/api.py`
+
+여기서는 Flask 라우트를 정의하고, 요청 데이터를 꺼내고, 상태 코드를 결정합니다.  
+중요한 점은 "비즈니스 판단"을 여기서 하지 않는다는 것입니다.
+
+예를 들어 계정 신청 API는:
+
+- 요청값을 받고
+- 필수값이 있는지 확인하고
+- 서비스 레이어를 호출하고
+- JSON 응답을 반환합니다.
+
+외부 디렉터리 서비스에 직접 붙거나, 임시 비밀번호를 만들거나, 이메일을 보내는 일은 여기서 하지 않습니다.
+
+### 2. 애플리케이션 레이어
+
+위치:
 
 - `backend/ad_console/application/services.py`
-- Coordinates use cases such as account creation, password reset, and unlock approval
-- Depends only on domain ports, not on boto3, ldap3, or requests
 
-### Domain layer
+여기가 실제 유스케이스가 모여 있는 곳입니다.
+
+예를 들면:
+
+- 계정 신청 접수
+- 계정 승인
+- 비밀번호 변경
+- 인증 코드 발송
+- 계정 잠금 해제 요청
+- QR 재발급 문의
+
+이 레이어는 "무엇을 해야 하는가"를 결정합니다.  
+대신 "어떻게 외부에 붙는가"는 모릅니다.
+
+즉, 계정을 생성해야 한다는 사실은 알지만 AWS SDK를 직접 호출하지는 않습니다.  
+메일을 보내야 한다는 사실은 알지만 SMTP나 SES 세부 구현은 모릅니다.
+
+### 3. 도메인 레이어
+
+위치:
 
 - `backend/ad_console/domain/models.py`
 - `backend/ad_console/domain/ports.py`
-- Holds workflow data and interfaces for external capabilities
 
-### Adapters
+도메인 레이어는 두 가지 역할을 합니다.
 
-- `backend/ad_console/adapters/directory.py`
-- `backend/ad_console/adapters/emailing.py`
-- `backend/ad_console/adapters/notifications.py`
-- `backend/ad_console/adapters/automation.py`
-- `backend/ad_console/adapters/ai.py`
-- `backend/ad_console/adapters/repositories.py`
+첫째, 시스템이 다루는 데이터를 정리합니다.
 
-Each adapter can be swapped without changing the core workflow code.
+- `AccountRequest`
+- `UnlockRequest`
+- `VerificationCode`
+- `EmailMessage`
+- `ChatMessage`
 
-## Runtime Modes
+둘째, 외부 세계에 기대하는 기능을 포트로 정의합니다.
 
-### Demo mode
+- 디렉터리 생성/비밀번호 변경
+- 사용자 인증 검증
+- 알림 전송
+- 이메일 전송
+- 자동화 실행
+- AI 응답 생성
 
-- Default local mode
-- Uses in-memory repositories
-- Uses console-based side effects instead of external systems
-- Makes portfolio review and local execution easy
+이 포트들이 기준점이 되기 때문에, 애플리케이션 레이어는 boto3나 requests 같은 구체 구현을 몰라도 됩니다.
 
-### Live mode
+### 4. 어댑터 레이어
 
-- Enabled by setting `APP_MODE=live`
-- Wires AWS, LDAP, webhook, and email adapters
-- Keeps the same service interfaces and API routes
+위치:
 
-## Why This Refactor Matters
+- `backend/ad_console/adapters/`
 
-The original shape mixed HTTP handlers, AWS SDK calls, LDAP verification, email templates, and notification logic in one file. That makes testing, replacement, and public sanitization harder.
+여기서는 포트의 실제 구현을 둡니다.
 
-The current shape improves:
+예를 들어:
 
-- testability
-- readability
-- adapter replacement
-- portfolio safety
-- future persistence and auth extensions
+- `directory.py`: demo / AWS / LDAP 관련 구현
+- `emailing.py`: console / SMTP / SES 구현
+- `notifications.py`: console / webhook 구현
+- `automation.py`: 외부 작업 실행 구현
+- `ai.py`: demo 응답 / Bedrock 구현
+- `repositories.py`: 메모리 저장소 구현
+
+이 구조의 장점은 교체 가능성입니다.  
+예를 들어 데모 환경에서는 콘솔 로그로 대체하고, 실제 환경에서는 AWS나 LDAP를 붙일 수 있습니다. 서비스 레이어는 바뀌지 않습니다.
+
+## demo 모드를 둔 이유
+
+이 프로젝트를 공개 저장소로 만들면서 가장 중요한 조건 중 하나는 "실행은 되지만 실제 회사 시스템에는 붙지 않아야 한다"였습니다.
+
+그래서 기본 실행 모드를 `demo`로 두었습니다.
+
+demo 모드에서는:
+
+- 외부 디렉터리 생성 대신 로그 출력
+- 실제 메일 발송 대신 로그 출력
+- 실제 알림 전송 대신 로그 출력
+- AI도 데모 응답으로 대체
+- 저장소는 메모리 기반으로 유지
+
+이렇게 해두면 포트폴리오 저장소를 clone한 사람이 별도 자격 증명 없이도 흐름을 눌러볼 수 있습니다.
+
+반대로 live 모드에서는 같은 서비스 레이어 위에 실제 어댑터를 연결하면 됩니다.
+
+## 왜 이 방식이 실무적으로도 유리한가
+
+헥사고날 아키텍처는 이름만 놓고 보면 과해 보일 수 있습니다.  
+하지만 운영 도구처럼 외부 시스템이 많은 프로젝트에는 오히려 현실적인 선택입니다.
+
+이 프로젝트 기준으로 보면 장점이 분명합니다.
+
+### 테스트 관점
+
+서비스 레이어를 테스트할 때 외부 API를 직접 띄우지 않아도 됩니다.  
+포트만 대체하면 흐름 자체를 검증할 수 있습니다.
+
+### 변경 비용 관점
+
+메일 발송을 SES에서 다른 방식으로 바꾸더라도, 서비스 레이어 전체를 다시 건드릴 필요가 없습니다.
+
+### 공개/비공개 분리 관점
+
+포트폴리오용 저장소를 만들 때도 핵심 로직은 남기고, 회사 특화된 어댑터나 설정만 걷어낼 수 있습니다.
+
+### 설명 가능성 관점
+
+면접이나 기술 소개 자리에서 "왜 이렇게 만들었냐"는 질문이 들어왔을 때, 계층별 책임을 명확하게 설명할 수 있습니다.
+
+## 아직 남은 한계
+
+물론 지금 구조가 끝은 아닙니다.
+
+- 저장소가 아직 메모리 기반입니다.
+- 관리자 승인 이력이나 감사 로그가 없습니다.
+- 테스트 코드가 아직 없습니다.
+- Flask 개발 서버 대신 운영용 실행 구성을 더 다듬을 여지가 있습니다.
+
+다만 지금 상태는 최소한 "기능은 동작하고, 구조는 설명 가능하며, 공개 저장소로도 안전한 형태"까지는 왔다고 봅니다.
+
+이 프로젝트에서 가장 보여주고 싶은 지점도 바로 그 부분입니다.  
+복잡한 기능을 더 붙인 프로젝트라기보다, 운영 코드의 방향을 한 번 제대로 잡아본 프로젝트에 가깝습니다.

@@ -1,20 +1,42 @@
-# Project Guide
+# 이 저장소를 어떻게 읽으면 좋은가
 
-Use this repository as a portfolio demo for:
+이 프로젝트는 기능 자체보다 "정리 방식"을 보는 편이 좋습니다.  
+그래서 처음부터 모든 파일을 순서대로 읽기보다는, 아래 순서로 보는 걸 추천합니다.
 
-- backend modularization with hexagonal architecture
-- adapter-driven integrations
-- local demo execution without cloud credentials
-- lightweight operations UI for support workflows
+## 1. 먼저 README를 봅니다
 
-Start with:
+- `README.md`
 
-1. [README.md](../README.md)
-2. [ARCHITECTURE.md](./ARCHITECTURE.md)
-3. `backend/ad_console/application/services.py`
+여기에는 이 프로젝트를 왜 이런 형태로 다시 만들었는지, 어떤 문제를 해결하려고 했는지, 실행은 어떻게 하는지가 정리돼 있습니다.
 
-If you want to present the project in an interview, focus on:
+## 2. 그다음 아키텍처 문서를 봅니다
 
-- how the original all-in-one backend was separated by responsibility
-- how demo and live adapters share the same service contracts
-- how the public version avoids exposing private infrastructure details
+- `docs/ARCHITECTURE.md`
+
+여기서는 헥사고날 구조로 나눈 이유와 각 레이어의 책임을 설명합니다.  
+프로젝트 소개 자리에서는 이 문서의 흐름만 잘 이해해도 충분합니다.
+
+## 3. 실제 코드는 서비스 레이어부터 보는 편이 좋습니다
+
+- `backend/ad_console/application/services.py`
+
+이 파일이 유스케이스의 중심입니다.  
+계정 신청, 비밀번호 변경, 초기화, 잠금 해제 같은 흐름이 여기 모여 있습니다.
+
+## 4. 마지막으로 adapter를 봅니다
+
+- `backend/ad_console/adapters/`
+
+이쪽은 외부 시스템 연동 구현입니다.  
+핵심 로직을 이해한 다음 보면, 왜 포트로 분리했는지가 더 분명하게 보입니다.
+
+## 면접이나 소개 자리에서 강조할 포인트
+
+이 저장소를 설명할 때는 아래 세 가지를 중심으로 말하면 됩니다.
+
+1. 운영성 강한 Flask 앱을 구조적으로 정리했다는 점
+2. demo 모드와 live 모드를 같은 서비스 계층 위에 올렸다는 점
+3. 회사 의존성을 걷어내고도 흐름이 유지되도록 공개용으로 다듬었다는 점
+
+즉, 이 프로젝트는 단순히 "계정 관리 기능을 만들었다"보다,  
+"운영 도구를 설명 가능한 구조로 다시 설계했다"는 쪽으로 소개하는 게 더 맞습니다.
