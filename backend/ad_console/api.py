@@ -151,6 +151,7 @@ def build_api_blueprint(services: dict[str, object], static_folder: str) -> Blue
         file_path = os.path.join(static_folder, path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return send_from_directory(static_folder, path)
+        # SPA 라우팅 때문에 없는 경로도 index.html로 넘긴다.
         return send_from_directory(static_folder, "index.html")
 
     return bp

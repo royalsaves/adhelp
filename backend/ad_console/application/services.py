@@ -63,6 +63,7 @@ class AccountService:
         if not item:
             return None, ""
 
+        # 승인 시점에 임시 비밀번호를 같이 만든다.
         temp_password = _generate_password()
         self._directory.create_user(
             DirectoryUser(username=item.username, email=item.email, full_name=item.full_name),
@@ -130,6 +131,7 @@ class PasswordService:
         if not stored or stored.email != email or stored.code != code or datetime.now() > stored.expires_at:
             return None
 
+        # 코드 검증이 끝난 뒤에만 새 비밀번호를 발급한다.
         temp_password = _generate_password()
         self._directory.reset_password(username, temp_password)
         self._codes.delete(username)
@@ -245,5 +247,6 @@ class AIChatService:
 
 
 def _generate_password(length: int = 12) -> str:
+    # 데모에서도 너무 단순한 값은 피한다.
     alphabet = string.ascii_letters + string.digits + "!@#$%"
     return "".join(choice(alphabet) for _ in range(length))

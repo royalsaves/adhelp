@@ -15,6 +15,7 @@ class DemoAIChatAdapter:
             return "비밀번호 관련 요청은 '비밀번호 변경' 또는 '비밀번호 초기화' 메뉴에서 처리할 수 있습니다."
         if "vpn" in latest:
             return "VPN 이슈는 잠금 해제, QR 재발급, 가이드 문서 확인 순서로 안내하는 데모 응답입니다."
+        # 데모 모드에서는 실제 모델 대신 고정 응답으로 흐름만 본다.
         return "로컬 데모 모드입니다. 실제 Bedrock 대신 예시 응답을 반환합니다."
 
 
@@ -31,6 +32,7 @@ class BedrockAIChatAdapter:
                 continue
             messages.append({"role": role, "content": [{"type": "text", "text": item.text}]})
 
+        # 내부 메시지 포맷을 Bedrock 요청 포맷으로 바꿔서 넘긴다.
         response = self._client.invoke_model(
             modelId=self._model_id,
             contentType="application/json",
