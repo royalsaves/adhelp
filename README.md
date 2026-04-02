@@ -79,6 +79,18 @@ python app.py
 
 The Flask server will serve `frontend/dist`.
 
+## Container Run
+
+No local `npm install` is required for containerized use.
+
+```bash
+docker compose up --build
+```
+
+Then open `http://127.0.0.1:5001`.
+
+The image builds the React frontend in a Node stage and serves the built assets from the Flask container.
+
 ## Demo Workflows
 
 - Request a new account
