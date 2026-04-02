@@ -1,0 +1,50 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install Dependencies
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Build Frontend
+      run: |
+        cd frontend
+        npm run build
+
+    - name: Archive Production Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: frontend/dist
+
+  deploy:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download Artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: dist
+        path: frontend/dist
+
+    - name: Mock Deploy to EC2
+      run: |
+        echo "Deploying to EC2..."
+        # In real scenario: scp -r frontend/dist user@ec2-ip:/var/www/adhelp
+        echo "Deploy finished."
